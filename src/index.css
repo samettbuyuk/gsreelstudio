@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-gs-red: #A90432;
+  --color-gs-gold: #FDB912;
+  
+  --background-image-gs-gradient: linear-gradient(135deg, #A90432 0%, #FDB912 100%);
+}
+
+@layer components {
+  .impact-text {
+    @apply font-[900] uppercase tracking-tighter leading-[0.9] italic;
+  }
+  
+  .glass-panel {
+    @apply bg-white/5 backdrop-blur-[10px] border border-white/10;
+  }
+  
+  .gs-gradient {
+    @apply bg-linear-to-br from-[#A90432] to-[#FDB912];
+  }
+}
+
+.scroll-hide::-webkit-scrollbar {
+  display: none;
+}

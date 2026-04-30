@@ -1,0 +1,6 @@
+{
+  "name": "GS Reels Asistanı",
+  "description": "Galatasaray haberlerini Reels/TikTok/Shorts içeriklerine dönüştüren yapay zeka destekli içerik üretim aracı.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["AI Content Generation", "Text-to-Speech"]
+}
