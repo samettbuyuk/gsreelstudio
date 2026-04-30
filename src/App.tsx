@@ -14,6 +14,7 @@ import {
   Mic2, 
   Music, 
   Newspaper, 
+  PawPrint,
   Play, 
   RefreshCw, 
   Share2, 
@@ -243,10 +244,13 @@ export default function App() {
       </div>
 
       <header className="relative z-10 p-6 border-b border-white/10 backdrop-blur-md bg-black/40 sticky top-0">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl mx-auto flex items-center gap-6">
+          <div className="w-16 h-16 rounded-2xl md:rounded-3xl gs-gradient flex items-center justify-center shadow-2xl shadow-[#A90432]/40 border border-white/10 shrink-0">
+            <PawPrint className="w-8 h-8 md:w-10 md:h-10 text-white fill-current transform -rotate-12" />
+          </div>
           <div className="flex flex-col">
             <span className="text-[#FDB912] font-bold text-[10px] tracking-[0.3em] uppercase mb-1">Cimbom Dijital İçerik Üretici</span>
-            <h1 className="text-5xl impact-text">GS REELS <span className="text-[#A90432]">STUDIO</span></h1>
+            <h1 className="text-4xl md:text-5xl impact-text leading-none">GS REELS <span className="text-[#A90432]">STUDIO</span></h1>
           </div>
         </div>
       </header>
