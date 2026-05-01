@@ -14,14 +14,15 @@ import {
   Mic2, 
   Music, 
   Newspaper, 
-  PawPrint,
-  Play, 
-  RefreshCw, 
-  Share2, 
-  Sparkles, 
+  Palette,
+  RefreshCw,
+  Sparkles,
+  Terminal,
   Type, 
   Video,
-  Volume2
+  Volume2,
+  Wand2,
+  Image as ImageIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useRef, useEffect } from "react";
@@ -32,6 +33,14 @@ interface ReelsContent {
   caption: string;
   hashtags: string[];
   coverText: string;
+  planner: {
+    mediaAdvice: string;
+    subtitleStyle: {
+      colors: string;
+      fonts: string;
+    };
+    voiceProfile: string;
+  };
 }
 
 function extractJson(text: string) {
@@ -59,23 +68,16 @@ function extractJson(text: string) {
   }
 }
 
-const VOICES = [
-  { id: 'Kore', name: 'Kore', description: 'Net ve profesyonel', sample: 'Sarı kırmızı şampiyon Cimbom!' },
-  { id: 'Puck', name: 'Puck', description: 'Genç ve enerjik', sample: 'Hedef yirmibeş, konsantrasyon!' },
-  { id: 'Charon', name: 'Charon', description: 'Derin ve ciddi', sample: 'Galatasaray bir histir.' },
-  { id: 'Fenrir', name: 'Fenrir', description: 'Sert ve güçlü', sample: 'Florya rüzgarı esiyor!' },
-];
-
 export default function App() {
   const [newsText, setNewsText] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [content, setContent] = useState<ReelsContent | null>(null);
-  const [selectedVoice, setSelectedVoice] = useState(VOICES[0].id);
-  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
-  const [isPreviewing, setIsPreviewing] = useState<string | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<Record<string, boolean>>({});
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [partImages, setPartImages] = useState<Record<number, string>>({});
+  const [isGeneratingPartImage, setIsGeneratingPartImage] = useState<Record<number, boolean>>({});
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
@@ -83,22 +85,26 @@ export default function App() {
     if (!newsText.trim()) return;
     setIsGenerating(true);
     setContent(null);
-    setAudioUrl(null);
+    setGeneratedImageUrl(null);
+    setPartImages({});
     setApiError(null);
 
     try {
       const prompt = `
-        Aşağıdaki Galatasaray spor haberini 30-40 saniyelik bir sosyal medya (Reels, TikTok, Shorts) videosu için metne dönüştür.
+        Aşağıdaki Galatasaray spor haberini 30-40 saniyelik bir sosyal medya (Reels, TikTok, Shorts) videosu için metne ve planlama rehberine dönüştür.
         
         KURALLAR:
         1. Dil: Türkçe.
         2. Tarz: Çok yüksek enerjili, heyecanlı, "hype" yaratan, taraftarı gaza getiren bir üslup kullan.
-        3. Trendler: Güncel sosyal medya trendlerindeki çarpıcı giriş cümlelerini (Hook) kullan. (Örn: "Duyanlar duymayanlara anlatsın!", "Florya'da neler oluyor?", "İşte beklenen o haber!")
-        4. Yapı:
-           - Script: 30-40 saniye sürecek şekilde ayarla. Maksimum 400 karakter. Saniyeleri parantez içinde belirtme, sadece okunacak metni ver.
-           - Caption: Paylaşım için etkileyici, merak uyandıran bir açıklama.
-           - Hashtags: En az 10 adet popüler ve Galatasaray odaklı hashtag.
-           - CoverText: Video kapağına yazılacak en fazla 2-3 kelimelik, devasa puntoluymuş gibi duran, "clickbait" tadında çarpıcı bir başlık.
+        3. Yapı:
+           - script: 30-40 saniye sürecek şekilde ayarla. Maksimum 400 karakter.
+           - caption: Etkileyici bir açıklama.
+           - hashtags: En az 10 adet popüler hashtag.
+           - coverText: 2-3 kelimelik çarpıcı bir başlık.
+           - planner: Videonun yapımı için şu detayları sağla:
+             - mediaAdvice: Hangi tür fotoğraf veya videolar seçilmeli? (Örn: "Gol sevinçleri", "Tribün görüntüleri")
+             - subtitleStyle: Altyazıların hangi RENK ve hangi FONT ile yazılması gerektiğini belirt.
+             - voiceProfile: Seslendirmenin nasıl olması gerektiğini belirt (Kadın mı erkek mi, enerjik mi güçlü mü, tonu nasıl olmalı).
         
         GİRİS HABER METNİ:
         "${newsText}"
@@ -107,8 +113,16 @@ export default function App() {
         {
           "script": "...",
           "caption": "...",
-          "hashtags": ["#gs", "..."],
-          "coverText": "..."
+          "hashtags": ["..."],
+          "coverText": "...",
+          "planner": {
+            "mediaAdvice": "...",
+            "subtitleStyle": {
+              "colors": "...",
+              "fonts": "..."
+            },
+            "voiceProfile": "..."
+          }
         }
       `;
 
@@ -150,80 +164,68 @@ export default function App() {
     }
   };
 
-  const handlePreviewVoice = async (voiceId: string) => {
-    const voice = VOICES.find(v => v.id === voiceId);
-    if (!voice) return;
-    setIsPreviewing(voiceId);
-    setApiError(null);
+  const handleGenerateImage = async (prompt?: string, partIndex?: number) => {
+    const isPart = partIndex !== undefined;
+    const targetPrompt = prompt || content?.coverText;
+    if (!targetPrompt) return;
 
-    try {
-      const result = await (ai as any).models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: [{ parts: [{ text: voice.sample }] }],
-        generationConfig: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: voiceId },
-            },
-          },
-        },
-      });
-
-      // Extract part safely
-      const response = result.response || result;
-      const part = (response.candidates?.[0]?.content?.parts || response.parts)?.[0];
-      const base64Audio = part?.inlineData?.data;
-      const mimeType = part?.inlineData?.mimeType || 'audio/wav';
-
-      if (base64Audio) {
-        const audio = new Audio(`data:${mimeType};base64,${base64Audio}`);
-        await audio.play();
-      }
-    } catch (error: any) {
-      console.error("Preview failed:", error);
-      if (error?.message?.includes("429") || error?.status === 429 || error?.toString().includes("quota")) {
-        setApiError("Seslendirme kotası doldu veya model şu an meşgul. Kısa bir süre bekleyip tekrar deneyin.");
-      }
-    } finally {
-      setIsPreviewing(null);
+    if (isPart) {
+      setIsGeneratingPartImage(prev => ({ ...prev, [partIndex]: true }));
+    } else {
+      setIsGeneratingImage(true);
     }
-  };
-
-  const handleGenerateAudio = async () => {
-    if (!content?.script) return;
-    setIsGeneratingAudio(true);
+    
     setApiError(null);
-
     try {
       const result = await (ai as any).models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: [{ parts: [{ text: `Pay attention to punctuation. Say with extreme excitement, energy, and sports broadcaster hype for social media: ${content.script}` }] }],
-        generationConfig: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: selectedVoice },
+        model: 'gemini-2.0-flash',
+        contents: {
+          parts: [
+            {
+              text: `Professional sports social media ${isPart ? 'scene background' : 'cover'} for Galatasaray. Cinematic lighting, dramatic atmosphere, stadium background. Context: ${targetPrompt}. Colors: Red and Yellow. Photorealistic, 4k, dynamic composition.`,
             },
+          ],
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: isPart ? "9:16" : "9:16",
           },
         },
       });
 
       const response = result.response || result;
-      const part = (response.candidates?.[0]?.content?.parts || response.parts)?.[0];
-      const base64Audio = part?.inlineData?.data;
-      const mimeType = part?.inlineData?.mimeType || 'audio/wav';
-
-      if (base64Audio) {
-        setAudioUrl(`data:${mimeType};base64,${base64Audio}`);
+      const parts = response.candidates?.[0]?.content?.parts || response.parts || [];
+      
+      let foundImage = false;
+      for (const part of parts) {
+        if (part.inlineData) {
+          const url = `data:image/png;base64,${part.inlineData.data}`;
+          if (isPart) {
+            setPartImages(prev => ({ ...prev, [partIndex]: url }));
+          } else {
+            setGeneratedImageUrl(url);
+          }
+          foundImage = true;
+          break;
+        }
+      }
+      
+      if (!foundImage) {
+        throw new Error("Resim verisi alınamadı.");
       }
     } catch (error: any) {
-      console.error("Audio generation failed:", error);
-      if (error?.message?.includes("429") || error?.status === 429 || error?.toString().includes("quota")) {
-        setApiError("Seslendirme servisi şu an yoğun. Lütfen 1-2 dakika bekleyip tekrar 'Oluştur'a basın.");
+      console.error("Image generation failed:", error);
+      if (error?.message?.includes("429") || error?.status === 429) {
+        setApiError("Görsel oluşturma kotası doldu. Biraz bekleyip tekrar deneyin.");
+      } else {
+        setApiError("Görsel oluşturulurken bir hata oluştu.");
       }
     } finally {
-      setIsGeneratingAudio(false);
+      if (isPart) {
+        setIsGeneratingPartImage(prev => ({ ...prev, [partIndex]: false }));
+      } else {
+        setIsGeneratingImage(false);
+      }
     }
   };
 
@@ -246,7 +248,7 @@ export default function App() {
       <header className="relative z-10 p-6 border-b border-white/10 backdrop-blur-md bg-black/40 sticky top-0">
         <div className="max-w-6xl mx-auto flex items-center gap-6">
           <div className="w-16 h-16 rounded-2xl md:rounded-3xl gs-gradient flex items-center justify-center shadow-2xl shadow-[#A90432]/40 border border-white/10 shrink-0">
-            <PawPrint className="w-8 h-8 md:w-10 md:h-10 text-white fill-current transform -rotate-12" />
+            <Wand2 className="w-8 h-8 md:w-10 md:h-10 text-white fill-current transform -rotate-12" />
           </div>
           <div className="flex flex-col">
             <span className="text-[#FDB912] font-bold text-[10px] tracking-[0.3em] uppercase mb-1">Cimbom Dijital İçerik Üretici</span>
@@ -325,17 +327,68 @@ export default function App() {
             <div className="absolute -right-8 -bottom-8 opacity-5">
               <Video className="w-64 h-64" />
             </div>
+            
             <div className="relative z-10 space-y-4">
-              <label className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-50 block">Kapak Başlığı Önerisi</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-50 block">Kapak Başlığı Önerisi</label>
+                {content && (
+                  <button 
+                    onClick={handleGenerateImage}
+                    disabled={isGeneratingImage}
+                    className="flex items-center gap-2 px-3 py-1 bg-[#FDB912]/10 border border-[#FDB912]/20 rounded-lg group hover:bg-[#FDB912]/20 transition-all disabled:opacity-50"
+                  >
+                    <ImageIcon className={`w-3 h-3 text-[#FDB912] ${isGeneratingImage ? "animate-pulse" : ""}`} />
+                    <span className="text-[9px] font-black uppercase text-[#FDB912]">Görsel Üret</span>
+                  </button>
+                )}
+              </div>
+              
               <AnimatePresence mode="wait">
                 {content ? (
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     key={content.coverText}
-                    className="text-2xl md:text-3xl impact-text text-[#FDB912] drop-shadow-2xl leading-none break-words"
+                    className="space-y-4"
                   >
-                    {content.coverText}
+                    <div className="text-2xl md:text-3xl impact-text text-[#FDB912] drop-shadow-2xl leading-none break-words">
+                      {content.coverText}
+                    </div>
+
+                    {generatedImageUrl && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="relative group mt-4 aspect-[9/16] max-h-[300px] mx-auto overflow-hidden rounded-2xl border border-white/10"
+                      >
+                        <img 
+                          src={generatedImageUrl} 
+                          alt="AI Generated Cover" 
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <button 
+                            onClick={() => {
+                              const a = document.createElement('a');
+                              a.href = generatedImageUrl;
+                              a.download = 'gs_reels_cover.png';
+                              a.click();
+                            }}
+                            className="bg-white text-black p-3 rounded-full hover:scale-110 transition-transform"
+                          >
+                            <Download className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {isGeneratingImage && (
+                      <div className="aspect-[9/16] max-h-[300px] mx-auto rounded-2xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-3 bg-white/5">
+                        <RefreshCw className="w-8 h-8 animate-spin text-[#FDB912]" />
+                        <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Görsel Oluşturuluyor...</span>
+                      </div>
+                    )}
                   </motion.div>
                 ) : (
                   <div className="text-2xl impact-text opacity-20">Analiz Bekleniyor...</div>
@@ -374,130 +427,139 @@ export default function App() {
                   </button>
                 </div>
                 
-                <div className="space-y-6 overflow-y-auto scroll-hide max-h-[400px] pr-2">
+                <div className="space-y-6 overflow-y-auto scroll-hide max-h-[600px] pr-2">
                   {content.script.split(". ").map((sentence, idx) => (
-                    <div key={idx} className={`border-l-4 pl-6 py-2 transition-all hover:bg-white/5 rounded-r-xl ${idx === 0 ? "border-[#FDB912]" : idx === content.script.split(". ").length - 1 ? "border-[#A90432]" : "border-white/10"}`}>
-                      <span className="text-[10px] font-black opacity-30 uppercase tracking-widest block mb-1">Parça {idx + 1}</span>
-                      <p className="text-xl font-bold leading-tight uppercase tracking-tight text-white/90">
-                        {sentence.trim()}{idx < content.script.split(". ").map((s) => s).length - 1 ? "." : ""}
-                      </p>
+                    <div key={idx} className={`group border-l-4 pl-6 py-4 transition-all hover:bg-white/5 rounded-r-xl ${idx === 0 ? "border-[#FDB912]" : idx === content.script.split(". ").length - 1 ? "border-[#A90432]" : "border-white/10"}`}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <span className="text-[10px] font-black opacity-30 uppercase tracking-widest block mb-1">Parça {idx + 1}</span>
+                          <p className="text-xl font-bold leading-tight uppercase tracking-tight text-white/90">
+                            {sentence.trim()}{idx < content.script.split(". ").map((s) => s).length - 1 ? "." : ""}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleGenerateImage(sentence, idx)}
+                          disabled={isGeneratingPartImage[idx]}
+                          className="shrink-0 p-2 bg-white/5 border border-white/10 rounded-xl hover:bg-[#FDB912]/10 hover:border-[#FDB912]/30 transition-all disabled:opacity-30"
+                          title="Bu parça için görsel üret"
+                        >
+                          {isGeneratingPartImage[idx] ? (
+                            <RefreshCw className="w-4 h-4 animate-spin text-[#FDB912]" />
+                          ) : (
+                            <ImageIcon className="w-4 h-4 text-[#FDB912]" />
+                          )}
+                        </button>
+                      </div>
+
+                      {partImages[idx] && (
+                        <motion.div 
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          className="mt-4 relative rounded-2xl overflow-hidden border border-white/10 bg-black/40 shadow-xl"
+                        >
+                          <img 
+                            src={partImages[idx]} 
+                            alt={`Sahne ${idx + 1}`}
+                            className="w-full aspect-video object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <button 
+                              onClick={() => {
+                                const a = document.createElement('a');
+                                a.href = partImages[idx];
+                                a.download = `gs_sahne_${idx + 1}.png`;
+                                a.click();
+                              }}
+                              className="bg-white text-black p-3 rounded-full hover:scale-110 transition-transform"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Metadata Section */}
+              {/* Reels Planner Section */}
               <div className="col-span-12 lg:col-span-5 space-y-6">
-                {/* TTS Section */}
-                <div className="glass-panel rounded-3xl p-6 space-y-6">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-50 block text-center">AI Seslendirme (TTS)</label>
-                    <h3 className="impact-text text-center text-xl text-[#FDB912]">Karakter Seçimi</h3>
+                <div className="glass-panel rounded-3xl p-8 space-y-8 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-5">
+                    <Wand2 className="w-24 h-24" />
+                  </div>
+                  
+                  <div className="flex flex-col gap-1 items-center md:items-start">
+                    <label className="text-[10px] uppercase tracking-[0.3em] font-black text-[#FDB912]">Prodüksiyon Taslağı</label>
+                    <h3 className="impact-text text-3xl">REELS PLANNER</h3>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-2">
-                    {VOICES.map((v) => (
-                      <div
-                        key={v.id}
-                        className={`group px-4 py-3 rounded-xl border transition-all flex items-center justify-between ${
-                          selectedVoice === v.id 
-                            ? "bg-white/10 border-[#FDB912]" 
-                            : "bg-white/5 border-transparent"
-                        }`}
-                      >
-                        <button 
-                          onClick={() => setSelectedVoice(v.id)}
-                          className="flex-1 text-left"
-                        >
-                          <span className={`text-xs font-black uppercase tracking-widest ${selectedVoice === v.id ? "text-[#FDB912]" : "text-white/40"}`}>
-                            {v.name}
-                          </span>
-                          <p className="text-[9px] opacity-30 uppercase">{v.description}</p>
-                        </button>
-                        
-                        <button
-                          disabled={isPreviewing === v.id}
-                          onClick={() => handlePreviewVoice(v.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors"
-                        >
-                          {isPreviewing === v.id ? (
-                            <RefreshCw className="w-3 h-3 animate-spin text-[#FDB912]" />
-                          ) : (
-                            <Volume2 className="w-3 h-3 text-[#FDB912]" />
-                          )}
-                          <span className="text-[10px] font-bold uppercase text-white/60">Dinle</span>
-                        </button>
+                  <div className="space-y-6">
+                    {/* Media Selection */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-[#A90432]">
+                        <ImageIcon className="w-4 h-4" />
+                        <h4 className="text-xs font-black uppercase tracking-wider">Video & Fotoğraf Seçimi</h4>
                       </div>
-                    ))}
-                  </div>
+                      <p className="text-sm opacity-70 leading-relaxed pl-6 border-l border-white/10 italic">
+                        {content.planner.mediaAdvice}
+                      </p>
+                    </div>
 
-                  <div className="pt-4 border-t border-white/10">
-                    {!audioUrl ? (
-                      <motion.button
-                        disabled={isGeneratingAudio}
-                        onClick={handleGenerateAudio}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="w-full py-4 bg-white text-black rounded-2xl impact-text text-xl flex items-center justify-center gap-3 hover:bg-[#FDB912] transition-colors"
-                      >
-                        {isGeneratingAudio ? (
-                          <RefreshCw className="w-6 h-6 animate-spin" />
-                        ) : (
-                          <>
-                            <Play className="w-5 h-5 fill-current" />
-                            Oluştur
-                          </>
-                        )}
-                      </motion.button>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="bg-white/5 p-4 rounded-2xl border border-white/10 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-[#A90432] flex items-center justify-center">
-                              <Music className="w-5 h-5 text-white" />
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-black uppercase opacity-60">reels_final.mp3</span>
-                              <audio src={audioUrl} autoPlay className="h-0 w-0" />
-                              <audio controls src={audioUrl} className="h-8 w-40 accent-[#FDB912]" />
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => {
-                              const a = document.createElement('a');
-                              a.href = audioUrl;
-                              a.download = 'gs_reels_audio.wav';
-                              a.click();
-                            }}
-                            className="p-2 hover:bg-white/10 rounded-full text-green-400"
-                          >
-                            <Download className="w-5 h-5" />
-                          </button>
+                    {/* Subtitle Style */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-[#FDB912]">
+                        <Palette className="w-4 h-4" />
+                        <h4 className="text-xs font-black uppercase tracking-wider">Altyazı Stili (Renk & Font)</h4>
+                      </div>
+                      <div className="pl-6 border-l border-white/10 space-y-2">
+                        <div className="flex items-start gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#FDB912] mt-1.5 shrink-0" />
+                          <p className="text-[11px] font-bold uppercase tracking-wide opacity-80">
+                            Renk: <span className="text-white">{content.planner.subtitleStyle.colors}</span>
+                          </p>
                         </div>
-                        <button onClick={() => setAudioUrl(null)} className="w-full text-[10px] uppercase font-black tracking-widest opacity-30 hover:opacity-100 transition-opacity">Yeniden Yap</button>
+                        <div className="flex items-start gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#A90432] mt-1.5 shrink-0" />
+                          <p className="text-[11px] font-bold uppercase tracking-wide opacity-80">
+                            Font: <span className="text-white">{content.planner.subtitleStyle.fonts}</span>
+                          </p>
+                        </div>
                       </div>
-                    )}
+                    </div>
+
+                    {/* Voiceover Style */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-blue-400">
+                        <Terminal className="w-4 h-4" />
+                        <h4 className="text-xs font-black uppercase tracking-wider">Seslendirme Karakteri</h4>
+                      </div>
+                      <p className="text-sm opacity-70 leading-relaxed pl-6 border-l border-white/10">
+                        {content.planner.voiceProfile}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
                 {/* Caption & Hashtags */}
-                <div className="bg-white/[0.02] backdrop-blur-sm border border-white/10 rounded-3xl p-6 space-y-6">
+                <div className="bg-white/[0.02] backdrop-blur-sm border border-white/10 rounded-3xl p-8 space-y-8">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-50">Post Açıklaması</label>
-                      <button onClick={() => copyToClipboard(content.caption, 'cap')} className="opacity-40 hover:opacity-100">
+                      <button onClick={() => copyToClipboard(content.caption, 'cap')} className="opacity-40 hover:opacity-100 transition-opacity">
                         {copyStatus['cap'] ? <ClipboardCheck className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                       </button>
                     </div>
-                    <div className="bg-white/[0.03] p-4 rounded-xl text-xs leading-relaxed font-mono opacity-70 border border-white/5">
+                    <div className="bg-white/[0.03] p-4 rounded-xl text-xs leading-relaxed font-mono opacity-80 border border-white/5">
                       {content.caption}
                     </div>
                   </div>
                   
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <label className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-50">Hashtags</label>
-                      <button onClick={() => copyToClipboard(content.hashtags.join(" "), 'hash')} className="opacity-40 hover:opacity-100">
+                      <label className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-50">Hashtagler</label>
+                      <button onClick={() => copyToClipboard(content.hashtags.join(" "), 'hash')} className="opacity-40 hover:opacity-100 transition-opacity">
                         {copyStatus['hash'] ? <ClipboardCheck className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                       </button>
                     </div>
@@ -528,9 +590,9 @@ export default function App() {
               <p className="text-[10px] opacity-50 uppercase tracking-tighter">Gazete haberini saniyeler içinde viral olmaya aday bir Reels metnine çevirir.</p>
             </div>
             <div className="p-6 glass-panel rounded-2xl space-y-2">
-              <Music className="w-6 h-6 text-[#A90432]" />
-              <h4 className="font-bold uppercase tracking-widest text-xs">Gerçekçi Ses</h4>
-              <p className="text-[10px] opacity-50 uppercase tracking-tighter">Google destekli yapay zeka sesleri ile profesyonel bir seslendirme elde et.</p>
+              <Palette className="w-6 h-6 text-[#A90432]" />
+              <h4 className="font-bold uppercase tracking-widest text-xs">Görsel Rehber</h4>
+              <p className="text-[10px] opacity-50 uppercase tracking-tighter">İçeriğe en uygun font, renk ve video seçim önerileri ile profesyonel görünüm.</p>
             </div>
             <div className="p-6 glass-panel rounded-2xl space-y-2">
               <Hash className="w-6 h-6 text-blue-400" />
