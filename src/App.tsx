@@ -164,10 +164,12 @@ export default function App() {
     }
   };
 
-  const handleGenerateImage = async (prompt?: string, partIndex?: number) => {
+  const handleGenerateImage = async (prompt?: any, partIndex?: number) => {
     const isPart = partIndex !== undefined;
-    const targetPrompt = prompt || content?.coverText;
-    if (!targetPrompt) return;
+    
+    // If prompt is an event object (e.g. from onClick={handleGenerateImage}), ignore it
+    const actualPrompt = typeof prompt === 'string' ? prompt : (content?.coverText || "");
+    if (!actualPrompt) return;
 
     if (isPart) {
       setIsGeneratingPartImage(prev => ({ ...prev, [partIndex]: true }));
@@ -178,17 +180,17 @@ export default function App() {
     setApiError(null);
     try {
       const result = await (ai as any).models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash-image',
         contents: {
           parts: [
             {
-              text: `Professional sports social media ${isPart ? 'scene background' : 'cover'} for Galatasaray. Cinematic lighting, dramatic atmosphere, stadium background. Context: ${targetPrompt}. Colors: Red and Yellow. Photorealistic, 4k, dynamic composition.`,
+              text: `Professional sports social media ${isPart ? 'scene background' : 'social media cover'} for Galatasaray. Cinematic lighting, dramatic atmosphere, stadium background. Subject: ${actualPrompt}. Colors: Red and Yellow. Photorealistic, 4k, dynamic composition, no text in the image.`,
             },
           ],
         },
         config: {
           imageConfig: {
-            aspectRatio: isPart ? "9:16" : "9:16",
+            aspectRatio: "9:16",
           },
         },
       });
@@ -333,7 +335,7 @@ export default function App() {
                 <label className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-50 block">Kapak Başlığı Önerisi</label>
                 {content && (
                   <button 
-                    onClick={handleGenerateImage}
+                    onClick={() => handleGenerateImage()}
                     disabled={isGeneratingImage}
                     className="flex items-center gap-2 px-3 py-1 bg-[#FDB912]/10 border border-[#FDB912]/20 rounded-lg group hover:bg-[#FDB912]/20 transition-all disabled:opacity-50"
                   >
